@@ -2,6 +2,7 @@ package dev.akomyagin.dashboard.cli
 
 import dev.akomyagin.dashboard.DashboardService
 import dev.akomyagin.dashboard.github.CiStatus
+import dev.akomyagin.dashboard.github.RepoStatus
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -11,18 +12,37 @@ import kotlinx.coroutines.runBlocking
 object Cli {
     fun printStatus(service: DashboardService) = runBlocking {
         val statuses = service.portfolioStatus()
-        println("Portfolio status (${statuses.size} repos)\n")
+        print(renderStatus(statuses))
+    }
+
+    /** Pure renderer, extracted so it can be unit-tested without stdout capture. */
+    fun renderStatus(statuses: List<RepoStatus>): String {
+        val sb = StringBuilder()
+        val ok = statuses.count { it.error == null }
+        val degraded = statuses.size - ok
+        sb.append("Portfolio status — ${statuses.size} repos ($ok ok, $degraded degraded)\n\n")
+
+        val nameWidth = (statuses.maxOfOrNull { it.fullName.length } ?: 20).coerceAtLeast(10)
+        sb.append("  ${"CI".padEnd(6)} ${"Repository".padEnd(nameWidth)}  PRs  Last commit\n")
+        sb.append("  ${"-".repeat(6)} ${"-".repeat(nameWidth)}  ---  ${"-".repeat(20)}\n")
+
         statuses.forEach { s ->
-            val icon = when (s.ci) {
-                CiStatus.SUCCESS -> "OK  "
+            val badge = when (s.ci) {
+                CiStatus.SUCCESS -> "OK"
                 CiStatus.FAILURE -> "FAIL"
-                CiStatus.PENDING -> "...."
-                CiStatus.UNKNOWN -> "?   "
+                CiStatus.PENDING -> "RUN"
+                CiStatus.UNKNOWN -> "?"
             }
-            val commit = s.lastCommit?.let { "${it.sha} ${it.message.take(50)}" } ?: "-"
-            val err = s.error?.let { "  (error: $it)" } ?: ""
-            println("[$icon] ${s.fullName.padEnd(34)} PRs:${s.openPrs}  $commit$err")
+            val commit = when {
+                s.error != null -> "error: ${s.error}"
+                s.lastCommit != null -> "${s.lastCommit.sha} ${s.lastCommit.message.take(60)}"
+                else -> "-"
+            }
+            sb.append(
+                "  ${badge.padEnd(6)} ${s.fullName.padEnd(nameWidth)}  ${s.openPrs.toString().padStart(3)}  $commit\n",
+            )
         }
+        return sb.toString()
     }
 
     fun printTodos(service: DashboardService) = runBlocking {

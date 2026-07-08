@@ -30,12 +30,7 @@ data class TodoItem(
  */
 class TodoScanner(private val config: AppConfig) {
 
-    // Matches a marker only when it is a standalone word inside a comment-ish
-    // context, e.g. `// TODO: x`, `# FIXME x`, `<!-- HACK -->`. The leading
-    // boundary avoids matching identifiers like `TODOLIST`.
-    private val markerRegex = Regex(
-        pattern = "(?<![A-Za-z0-9_])(${config.markers.joinToString("|") { Regex.escape(it) }})\\b[:\\-]?\\s*(.*)",
-    )
+    private val markerAlternation = config.markers.joinToString("|") { Regex.escape(it) }
 
     fun scan(): List<TodoItem> = config.repos.flatMap { scanRepo(it) }
 
@@ -62,8 +57,9 @@ class TodoScanner(private val config: AppConfig) {
         val items = mutableListOf<TodoItem>()
         val relFile = root.relativize(path).toString()
         val lines = runCatching { Files.readAllLines(path) }.getOrNull() ?: return emptyList()
+        val regex = commentMarkerRegex(path.name)
         lines.forEachIndexed { idx, line ->
-            val match = markerRegex.find(line) ?: return@forEachIndexed
+            val match = regex.find(line) ?: return@forEachIndexed
             val marker = match.groupValues[1]
             val text = match.groupValues[2].trim().ifEmpty { line.trim() }
             items += TodoItem(
@@ -75,5 +71,22 @@ class TodoScanner(private val config: AppConfig) {
             )
         }
         return items
+    }
+
+    // A marker only counts when it directly follows a comment opener on the
+    // same line, with only whitespace allowed in between: a language
+    // line-comment token, a block-comment opener, or a block-comment
+    // continuation line starting with `*`. That's what keeps marker words
+    // that merely appear in string literals or descriptive prose (including
+    // this class's own doc comments) from being counted as real hits.
+    private fun commentMarkerRegex(fileName: String): Regex {
+        val lineTokens = when {
+            fileName.endsWith(".py") -> listOf("#")
+            fileName.endsWith(".php") -> listOf("//", "#")
+            else -> listOf("//") // .kt, .go, .ts, .tsx
+        }
+        val openers = (listOf("^\\s*\\*") + lineTokens.map { Regex.escape(it) } + listOf("/\\*"))
+            .joinToString("|")
+        return Regex("(?:$openers)\\s*($markerAlternation)\\b[:\\-]?\\s*(.*)")
     }
 }
