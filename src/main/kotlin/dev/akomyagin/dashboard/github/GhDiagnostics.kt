@@ -46,8 +46,10 @@ object GhDiagnostics {
 
     private fun String.looksLikeAuthFailure(): Boolean {
         val s = lowercase()
-        return "auth" in s ||
-            "not logged" in s ||
+        // Bare "auth" also matches unrelated gh errors that happen to contain
+        // "author" (e.g. "could not resolve author"), so match narrower,
+        // auth-specific fragments instead.
+        return "not logged" in s ||
             "gh auth login" in s ||
             "authentication" in s ||
             "http 401" in s ||

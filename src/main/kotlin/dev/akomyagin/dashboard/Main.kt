@@ -84,8 +84,11 @@ private fun runWebMode(service: DashboardService, port: Int, open: Boolean) {
     val url = "http://127.0.0.1:$port"
     println("aiProjectDashboard → $url  (Ctrl-C to stop)")
 
-    // Surface the gh diagnostic once, before the server blocks the main thread.
-    warnIfPortfolioAllErrored(service)
+    // Off-thread: this refetches the whole portfolio (same call the first
+    // /api/status request will also make), so it must never delay the server
+    // binding its port — a slow/hanging gh would otherwise turn "instant start"
+    // into "blocks for up to N * 20s" (found by independent /code-review).
+    thread(isDaemon = true, name = "gh-diagnostics") { warnIfPortfolioAllErrored(service) }
 
     if (open) {
         // Off-thread so we don't delay start() and never block on a slow launcher.
