@@ -2,6 +2,7 @@ package dev.akomyagin.dashboard.cli
 
 import dev.akomyagin.dashboard.DashboardService
 import dev.akomyagin.dashboard.github.CiStatus
+import dev.akomyagin.dashboard.github.GhDiagnostics
 import dev.akomyagin.dashboard.github.RepoStatus
 import kotlinx.coroutines.runBlocking
 
@@ -10,9 +11,15 @@ import kotlinx.coroutines.runBlocking
  * headless (`--cli status` / `--cli todos`) without opening a browser.
  */
 object Cli {
+    /**
+     * Fetch once, render to stdout, and — if the whole portfolio is degraded by
+     * a missing/unauthenticated `gh` — print a single diagnostic hint to stderr
+     * instead of leaving the user to read N identical per-repo error rows.
+     */
     fun printStatus(service: DashboardService) = runBlocking {
         val statuses = service.portfolioStatus()
         print(renderStatus(statuses))
+        GhDiagnostics.hint(statuses)?.let { System.err.println(it) }
     }
 
     /** Pure renderer, extracted so it can be unit-tested without stdout capture. */
