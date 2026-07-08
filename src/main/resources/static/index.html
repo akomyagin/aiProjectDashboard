@@ -46,11 +46,16 @@
       try {
         if (tab === 'status') {
           const rows = await (await fetch('/api/status')).json();
-          view.innerHTML = `<table><thead><tr><th>Repo</th><th>CI</th><th>Open PRs</th><th>Last commit</th></tr></thead><tbody>` +
+          const ok = rows.filter(r => !r.error).length;
+          view.innerHTML = `<p class="muted">${rows.length} repos — ${ok} ok, ${rows.length-ok} degraded</p>` +
+            `<table><thead><tr><th>Repo</th><th>CI</th><th>Open PRs</th><th>Last commit</th></tr></thead><tbody>` +
             rows.map(r => {
               const [cls,label] = ci(r.ci);
-              const commit = r.lastCommit ? `<code>${r.lastCommit.sha}</code> ${esc(r.lastCommit.message)}` : (r.error ? `<span class="fail">${esc(r.error)}</span>` : '<span class="muted">-</span>');
-              return `<tr><td>${esc(r.fullName)}</td><td class="${cls}">${label}</td><td>${r.openPrs}</td><td>${commit}</td></tr>`;
+              const ciCell = r.ciDetail ? `<span class="${cls}" title="${esc(r.ciDetail)}">${label}</span>` : `<span class="${cls}">${label}</span>`;
+              const commit = r.lastCommit
+                ? `<code>${esc(r.lastCommit.sha)}</code> ${esc(r.lastCommit.message)} <span class="muted">${esc((r.lastCommit.date||'').slice(0,10))}</span>`
+                : (r.error ? `<span class="fail">${esc(r.error)}</span>` : '<span class="muted">-</span>');
+              return `<tr><td>${esc(r.fullName)}</td><td>${ciCell}</td><td>${r.openPrs}</td><td>${commit}</td></tr>`;
             }).join('') + `</tbody></table>`;
         } else {
           const rows = await (await fetch('/api/todos')).json();
