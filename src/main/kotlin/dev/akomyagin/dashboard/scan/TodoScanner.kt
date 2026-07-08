@@ -35,6 +35,10 @@ class TodoScanner(private val config: AppConfig) {
     fun scan(): List<TodoItem> = config.repos.flatMap { scanRepo(it) }
 
     fun scanRepo(repo: RepoConfig): List<TodoItem> {
+        // A repo with no local_path, or whose working copy isn't on this machine,
+        // is silently skipped (empty list) rather than erroring: the portfolio is
+        // shared across machines and a repo not checked out here simply has no
+        // local TODOs to contribute. This is intentional, not a swallowed failure.
         val root = repo.localPath?.let { expandHome(it) } ?: return emptyList()
         if (!root.exists()) return emptyList()
         val results = mutableListOf<TodoItem>()
