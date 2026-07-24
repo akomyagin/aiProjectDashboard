@@ -154,6 +154,10 @@ Gradle-проект (`build.gradle.kts`, wrapper 8.10.2), пакетная ст�
 - **Маршруты (Этап 1+):** `ktor-server-test-host` — `/api/status`, `/api/todos`
   с фейковым `GitHubClient`, проверка degraded-пути и JSON-контракта.
 - Команды перед коммитом: `./gradlew build` (компиляция + тесты + jar).
+- **CI:** тот же `./gradlew build` гоняется в GitHub Actions
+  (`.github/workflows/ci.yml`, JDK 17/temurin, `gradle/actions/setup-gradle`
+  для кэша) на каждый push/PR в `master`. Мердж — только после зелёного чека
+  (`gh pr checks`).
 
 ## 7. Известные грабли (из `orm-nplus1-radar`)
 

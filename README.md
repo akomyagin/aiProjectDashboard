@@ -50,6 +50,9 @@ source ~/.sdkman/bin/sdkman-init.sh    # если JDK/Gradle стоят чере
 ./gradlew test
 ```
 
+Тот же `./gradlew build` гоняется в CI (GitHub Actions,
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)) на каждый push/PR в `master`.
+
 ## Конфигурация
 
 Портфель, маркеры, расширения и порт настраиваются в JSON. Пример —
