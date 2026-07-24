@@ -16,6 +16,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.nio.file.Files
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -73,5 +75,38 @@ class StatusRouteTest {
         val resp = client.get("/api/health")
         assertEquals(HttpStatusCode.OK, resp.status)
         assertTrue(resp.bodyAsText().contains("ok"))
+    }
+
+    @Test
+    fun `GET api todos returns ranked items scanned from disk`() = testApplication {
+        val dir = Files.createTempDirectory("todos-route-test")
+        dir.resolve("a.kt").writeText(
+            """
+            fun x() {
+                // TODO: tidy this up
+                // FIXME critical security leak in auth
+            }
+            """.trimIndent(),
+        )
+        val cfg = AppConfig(repos = listOf(RepoConfig(name = "sample", localPath = dir.toString())))
+        val service = DashboardService(cfg, FakeGitHubClient(), HeuristicRanker(), TodoScanner(cfg))
+
+        application {
+            installPlugins()
+            routes(service)
+        }
+
+        val resp = client.get("/api/todos")
+        assertEquals(HttpStatusCode.OK, resp.status)
+
+        val arr = Json.parseToJsonElement(resp.bodyAsText()).jsonArray
+        assertEquals(2, arr.size)
+
+        // HeuristicRanker sorts descending by priority; FIXME+"security"+"critical" outranks a bare TODO.
+        val top = arr[0].jsonObject
+        assertEquals("FIXME", top["marker"]!!.jsonPrimitive.content)
+        assertEquals("sample", top["repo"]!!.jsonPrimitive.content)
+        assertEquals("a.kt", top["file"]!!.jsonPrimitive.content)
+        assertTrue(top["priority"]!!.jsonPrimitive.content.toInt() >= arr[1].jsonObject["priority"]!!.jsonPrimitive.content.toInt())
     }
 }
