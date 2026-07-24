@@ -25,8 +25,9 @@ IDE-плагина `orm-nplus1-radar` из того же портфеля). Ло
 | `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties` | Gradle (Kotlin DSL) + wrapper 8.10.2 |
 | `src/main/kotlin/dev/akomyagin/dashboard/` | Ядро: `Main.kt`, `DashboardService.kt`, пакеты `config/`, `github/`, `scan/`, `rank/`, `http/`, `cli/` |
 | `src/main/resources/static/index.html` | Статический веб-UI (vanilla JS, две вкладки) |
-| `src/test/kotlin/…` | Тесты (scanner, ranker, config, CI-mapping; далее — маршруты Ktor) |
+| `src/test/kotlin/…` | Тесты (scanner, ranker, config, CI-mapping, маршруты Ktor) |
 | `config.example.json` | Пример конфига портфеля |
+| `.github/workflows/ci.yml` | GitHub Actions: `./gradlew build` на push/PR в `master` (JDK 17) |
 
 Docker Compose **намеренно отсутствует** — оркестровать нечего (нет БД/брокера/кэша),
 единственная внешняя зависимость `gh` живёт на хосте. Обоснование — `TECHNICAL_PLAN.md §2`.
@@ -44,6 +45,8 @@ Docker Compose **намеренно отсутствует** — оркестр�
 3. Opus — независимое ревью: skill /code-review на diff ветки, фиксируем замечания.
 4. Цикл исправлений — до 3 итераций: Sonnet правит замечания → тесты снова.
 5. Commit + push + PR — conventional-commit с русским subject, PR в master-ветку.
+6. Мердж — только после зелёного CI (GitHub Actions, `.github/workflows/ci.yml`;
+   проверяется через `gh pr checks`).
 
 ## Конвенции проекта
 
@@ -70,6 +73,10 @@ source ~/.sdkman/bin/sdkman-init.sh   # JDK 17/21 и Gradle стоят чере�
 
 Перед коммитом обязателен зелёный `./gradlew build`. При проверке результата
 сборки не использовать `| tail` перед `$?` — проверять `${PIPESTATUS[0]}`.
+
+Тот же `./gradlew build` гоняется в CI (GitHub Actions, `.github/workflows/ci.yml`)
+на каждый push/PR в `master` — локальный зелёный билд не заменяет проверку CI
+перед мерджем, только ускоряет обратную связь.
 
 ## Грабли Gradle (из `orm-nplus1-radar`)
 
