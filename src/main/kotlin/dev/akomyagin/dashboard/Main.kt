@@ -9,7 +9,7 @@ import dev.akomyagin.dashboard.github.GhCliClient
 import dev.akomyagin.dashboard.github.GhDiagnostics
 import dev.akomyagin.dashboard.http.BrowserOpener
 import dev.akomyagin.dashboard.http.dashboardServer
-import dev.akomyagin.dashboard.rank.HeuristicRanker
+import dev.akomyagin.dashboard.rank.LlmRanker
 import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.thread
 
@@ -44,12 +44,17 @@ fun main(args: Array<String>) {
     val service = DashboardService(
         config = config,
         github = GhCliClient(),
-        ranker = HeuristicRanker(),
+        // LlmRanker falls back to the offline HeuristicRanker on its own when
+        // DASHBOARD_LLM_API_KEY is unset or the call fails — no branching needed here.
+        ranker = LlmRanker(),
     )
 
     when (argValue(args, "--cli")) {
-        "status" -> Cli.printStatus(service) // prints its own gh diagnostic
-        "todos" -> Cli.printTodos(service)
+        // Explicit exitProcess(0): the LLM ranker's HTTP client keeps its engine's
+        // threads alive for the JVM's lifetime, which would otherwise stop a
+        // one-shot CLI invocation from returning control to the shell promptly.
+        "status" -> { Cli.printStatus(service); kotlin.system.exitProcess(0) } // prints its own gh diagnostic
+        "todos" -> { Cli.printTodos(service); kotlin.system.exitProcess(0) }
         null -> runWebMode(service, config.port, open = hasFlag(args, "--open"))
         else -> {
             System.err.println("Unknown --cli mode. Use: status | todos")

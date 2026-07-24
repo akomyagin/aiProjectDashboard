@@ -130,9 +130,19 @@ Gradle-проект (`build.gradle.kts`, wrapper 8.10.2), пакетная ст�
   (`BrowserOpener` — `Desktop.browse` с fallback на `xdg-open`/`open`/`start`);
   best-effort, никогда не роняет сервер на headless. Не поведение по умолчанию.
 
-### Этап 4 — реальный LLM-ранкер (порог в post-MVP)
-- Адаптер `LlmRanker` через Ktor Client к OpenAI-совместимому API (BYOK,
-  переменная окружения); при отсутствии ключа — остаётся `HeuristicRanker`.
+### Этап 4 — реальный LLM-ранкер (СДЕЛАНО)
+- Адаптер `LlmRanker` (`rank/LlmRanker.kt`) — Ktor Client к OpenAI-совместимому
+  `/chat/completions` (один батч-запрос на весь список TODO, структурированный
+  JSON-ответ `priority 1..5 + reason`). Ключ — только из переменной окружения
+  `DASHBOARD_LLM_API_KEY` (плюс опциональные `DASHBOARD_LLM_BASE_URL`,
+  `DASHBOARD_LLM_MODEL`), никогда из конфига/репозитория.
+- Отсутствие ключа, сетевая ошибка или невалидный JSON от LLM — тихий откат на
+  `HeuristicRanker` (никогда не роняет запрос и не показывает ошибку
+  пользователю). `Main.kt` всегда конструирует `LlmRanker()` — переключение на
+  оффлайн-режим происходит внутри самого ранкера, а не веткой в `Main`.
+- Тесты (`LlmRankerTest`) — фейковый транспорт `ktor-client-mock`: нет ключа
+  (без сетевого вызова), успешный разбор ответа, сетевая ошибка, невалидный
+  JSON — все ветки падают на эвристику.
 
 ## 6. Тестирование
 
