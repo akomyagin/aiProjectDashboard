@@ -1,5 +1,7 @@
 # aiProjectDashboard
 
+[![CI](https://github.com/akomyagin/aiProjectDashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/akomyagin/aiProjectDashboard/actions/workflows/ci.yml)
+
 Личный ops-дашборд портфеля pet-проектов на **Kotlin/Ktor**. Один экран для
 состояния всех репозиториев автора: CI-статус, последний коммит, открытые PR —
 плюс кросс-репо агрегатор `TODO/FIXME/HACK` с AI-приоритизацией.
