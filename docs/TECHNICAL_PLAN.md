@@ -66,8 +66,8 @@ src/main/kotlin/dev/akomyagin/dashboard/
 │   └── Paths.kt            # разворачивание ~ в домашний каталог
 ├── github/
 │   ├── Models.kt           # CiStatus, CommitInfo, RepoStatus
-│   ├── GitHubClient.kt     # ПОРТ: fetchStatus(repo)
-│   └── GhCliClient.kt      # АДАПТЕР: реализация через `gh` CLI
+│   ├── GitHubClient.kt     # ПОРТ: fetchStatus(repo) + fetchStatuses(repos) (batch, default — конкурентный fan-out)
+│   └── GhCliClient.kt      # АДАПТЕР: `gh` CLI; fetchStatuses — один `gh api graphql` на чанк репозиториев
 ├── scan/
 │   └── TodoScanner.kt      # обход ФС, regex-маркеры → List<TodoItem>
 ├── rank/
