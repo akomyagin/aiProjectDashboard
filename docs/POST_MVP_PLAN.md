@@ -11,10 +11,30 @@
 (`priority 1..5 + reason`), тихий откат на `HeuristicRanker` при отсутствии
 ключа/сбое. См. `rank/LlmRanker.kt` + `LlmRankerTest`.
 
-## 2. GraphQL-батчинг статуса
-Сейчас Фаза 1 делает несколько `gh`-вызовов на репозиторий. Один GraphQL-запрос
-(`repository(...) { defaultBranchRef, pullRequests, ... }`) на все репозитории
-уменьшит число сетевых обращений и попадания в rate-limit при большом портфеле.
+## 2. GraphQL-батчинг статуса — СДЕЛАНО
+`GhCliClient.fetchStatuses` строит один GraphQL-запрос (алиасы `r0`, `r1`, ...
+на `repository(owner, name) { pullRequests, defaultBranchRef { target { ...on
+Commit { checkSuites } } } }`) на чанк до 50 репозиториев вместо 3 REST-ish
+`gh`-вызовов на репозиторий — портфель из 9 репо теперь укладывается в один
+`gh api graphql`. CI берётся из `checkSuites` HEAD-коммита дефолтной ветки
+(агрегация по нескольким suite: FAILURE > PENDING > SUCCESS > UNKNOWN; suite
+ровно в форме `status=QUEUED, conclusion=null, workflowRun=null` — живьём
+пойманный на портфеле GitHub-плейсхолдер без реального CI-сигнала —
+отбрасывается; фильтр намеренно **не** по одному лишь `workflowRun == null`,
+т.к. это поле null-по-схеме и для настоящих non-Actions check suite'ов
+(сторонний CI через Checks API), которые должны учитываться). Частичный сбой
+(репо не резолвится) деградирует только этот репозиторий через
+`errors[].path`; сбой всего вызова (auth/timeout/gh недоступен, либо
+неразбираемый ответ) для чанка из нескольких репо **не** деградирует его
+целиком — каждый репозиторий чанка повторно запрашивается отдельным
+одиночным GraphQL-вызовом, изоляция per-repo восстанавливается на пути
+ретрая (см. `fetchStatusesBatch`). `GitHubClient.fetchStatuses` получил
+default-реализацию (конкурентный fan-out по `fetchStatus`), так что фейки в
+тестах не менялись. Строки ошибок больше не содержат префикс `gh api
+graphql:` — иначе `GhDiagnostics.looksLikeMissingGh()` ложно триггерился на
+"gh"+"not found" в сообщении о несуществующем репозитории. См.
+`GhCliClient.buildQuery`/`parseGraphQlResponse` (public для юнит-тестов без
+реального `gh`), `GhCliClientGraphQlTest`, `GhDiagnosticsTest`.
 
 ## 3. Кэш и история статусов
 Локальный кэш (файл/SQLite) последнего успешного ответа: мгновенный первый рендер,

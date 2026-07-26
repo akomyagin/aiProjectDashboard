@@ -57,4 +57,15 @@ class GhDiagnosticsTest {
         )
         assertNull(GhDiagnostics.hint(statuses))
     }
+
+    @Test
+    fun `no hint when the whole portfolio has a bad owner-name in config, not a missing gh`() {
+        // Regression: the GraphQL batch client's per-repo "not found" message must
+        // not be misread by looksLikeMissingGh() as "gh CLI isn't installed".
+        val statuses = listOf(
+            errored("a", "repository not found or inaccessible"),
+            errored("b", "repository not found or inaccessible"),
+        )
+        assertNull(GhDiagnostics.hint(statuses))
+    }
 }
