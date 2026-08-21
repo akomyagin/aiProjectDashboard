@@ -102,18 +102,27 @@ Gradle-проект (`build.gradle.kts`, wrapper 8.10.2), пакетная ст�
 базовые тесты (scanner, ranker, config round-trip, CI-mapping). `./gradlew build`
 проходит.
 
-### Этап 1 — Фаза 1: агрегация статуса портфеля
-- `GhCliClient`: довести до боевого — последний Actions-run, последний коммит,
-  число открытых PR; таймауты, разбор ошибок `gh` в `RepoStatus.error`.
-- Конкурентный опрос (`async/awaitAll`) — уже в `DashboardService`.
+### Этап 1 — Фаза 1: агрегация статуса портфеля (СДЕЛАНО)
+- `GhCliClient` — боевой адаптер: CI-статус, последний коммит, число открытых PR;
+  таймаут на `gh`, разбор ошибок в `RepoStatus.error` (graceful degradation).
 - Веб-вкладка «Portfolio status» + `--cli status`.
-- Тесты: фейковый `GitHubClient`, degraded-путь, маппинг CI-статусов (частично уже есть).
+- Тесты: фейковый `GitHubClient` (`PortfolioStatusTest`), degraded-путь, маппинг
+  CI-статусов (`GhCliClient.mapCi`), маршрут `/api/status` (`StatusRouteTest`).
+- **Изменено после `POST_MVP_PLAN.md` §2 (GraphQL-батчинг):** CI больше не берётся
+  из «последнего Actions-run» через `gh run list`, а агрегируется из `checkSuites`
+  HEAD-коммита дефолтной ветки. Конкурентный опрос переехал из `DashboardService`
+  в порт `GitHubClient.fetchStatuses` (default-реализация — fan-out по
+  `fetchStatus`; `GhCliClient` переопределяет её батчем `gh api graphql`).
+  `DashboardService` теперь только делегирует — как именно батчится, знает адаптер.
 
-### Этап 2 — Фаза 2: кросс-репо TODO-агрегатор
-- `TodoScanner`: обход ФС, исключения каталогов, regex-маркеры (уже есть каркас).
-- `HeuristicRanker` как offline-ранкер (уже есть).
+### Этап 2 — Фаза 2: кросс-репо TODO-агрегатор (СДЕЛАНО)
+- `TodoScanner`: обход ФС, исключения каталогов, regex-маркеры, засчитываемые
+  только в контексте комментария (не в строковых литералах и прозе докстрингов).
+- `HeuristicRanker` как offline-ранкер; после Этапа 4 он стал fallback'ом
+  `LlmRanker`, а не самостоятельным дефолтом в `Main`.
 - Веб-вкладка «TODOs» + `--cli todos`.
-- Тесты: temp-репозиторий, исключения, скоринг (частично уже есть).
+- Тесты: temp-репозиторий, исключения каталогов, не-маркеры, `.py`/`.php`
+  комментарии (`TodoScannerTest`), скоринг, маршрут `/api/todos` (`StatusRouteTest`).
 
 ### Этап 3 — конфиг и UX (СДЕЛАНО)
 - Команда/поток инициализации конфига: `--init-config` генерирует стартовый
