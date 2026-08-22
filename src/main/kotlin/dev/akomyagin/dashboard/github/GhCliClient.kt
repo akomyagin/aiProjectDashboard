@@ -166,7 +166,10 @@ class GhCliClient(
             appendLine("query {")
             repos.forEachIndexed { i, repo ->
                 appendLine("  r$i: repository(owner: ${quote(repo.owner)}, name: ${quote(repo.name)}) {")
-                appendLine("    pullRequests(states: OPEN) { totalCount }")
+                appendLine("    pullRequests(states: OPEN, first: 1, orderBy: {field: CREATED_AT, direction: ASC}) {")
+                appendLine("      totalCount")
+                appendLine("      nodes { number title createdAt url }")
+                appendLine("    }")
                 appendLine("    defaultBranchRef {")
                 appendLine("      target {")
                 appendLine("        ... on Commit {")
@@ -227,9 +230,17 @@ class GhCliClient(
         }
 
         private fun parseRepoNode(repo: RepoConfig, node: JsonObject): RepoStatus {
-            val openPrs = node["pullRequests"].obj()?.get("totalCount")?.jsonPrimitive?.intOrNull ?: 0
+            val prBlock = node["pullRequests"].obj()
+            val openPrs = prBlock?.get("totalCount")?.jsonPrimitive?.intOrNull ?: 0
+            val oldestOpenPr = prBlock?.get("nodes").arr()?.firstOrNull()?.obj()?.toPrInfo()
             val target = node["defaultBranchRef"].obj()?.get("target").obj()
-                ?: return RepoStatus(name = repo.name, fullName = repo.fullName, ciDetail = "no commits", openPrs = openPrs)
+                ?: return RepoStatus(
+                    name = repo.name,
+                    fullName = repo.fullName,
+                    ciDetail = "no commits",
+                    openPrs = openPrs,
+                    oldestOpenPr = oldestOpenPr,
+                )
 
             val commit = CommitInfo(
                 sha = target["oid"]?.jsonPrimitive?.contentOrNull?.take(7) ?: "",
@@ -249,6 +260,18 @@ class GhCliClient(
                 ciDetail = ciDetail,
                 lastCommit = commit,
                 openPrs = openPrs,
+                oldestOpenPr = oldestOpenPr,
+            )
+        }
+
+        /** Maps one `pullRequests.nodes[0]` entry to [PrInfo]; missing `number` makes the node unusable. */
+        private fun JsonObject.toPrInfo(): PrInfo? {
+            val number = this["number"]?.jsonPrimitive?.intOrNull ?: return null
+            return PrInfo(
+                number = number,
+                title = this["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                createdAt = this["createdAt"]?.jsonPrimitive?.contentOrNull ?: "",
+                url = this["url"]?.jsonPrimitive?.contentOrNull ?: "",
             )
         }
 

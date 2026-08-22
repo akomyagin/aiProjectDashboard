@@ -13,6 +13,14 @@ data class CommitInfo(
     val date: String,
 )
 
+@Serializable
+data class PrInfo(
+    val number: Int,
+    val title: String,
+    val createdAt: String,
+    val url: String,
+)
+
 /**
  * Everything the dashboard shows for one repository. [error] is non-null when
  * the GitHub lookup failed — the UI degrades gracefully per-repo rather than
@@ -31,4 +39,8 @@ data class RepoStatus(
     val stale: Boolean = false,
     /** True when the live CI conclusion differs from the previously cached one. */
     val ciChanged: Boolean = false,
+    /** Oldest currently-open PR on this repo (by createdAt), or null if none open.
+     *  New/degraded/no-open-PR responses omit it — default keeps old cached
+     *  status-cache.json entries (written before this field existed) deserializable. */
+    val oldestOpenPr: PrInfo? = null,
 )

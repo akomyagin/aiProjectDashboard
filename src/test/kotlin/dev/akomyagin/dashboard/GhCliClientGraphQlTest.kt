@@ -25,7 +25,8 @@ class GhCliClientGraphQlTest {
 
         assertTrue(query.contains("r0: repository(owner: \"akomyagin\", name: \"shelf\")"))
         assertTrue(query.contains("r1: repository(owner: \"akomyagin\", name: \"gitl\")"))
-        assertTrue(query.contains("pullRequests(states: OPEN)"))
+        assertTrue(query.contains("pullRequests(states: OPEN, first: 1, orderBy: {field: CREATED_AT, direction: ASC})"))
+        assertTrue(query.contains("nodes { number title createdAt url }"))
         assertTrue(query.contains("checkSuites(last: 5)"))
     }
 
@@ -33,7 +34,9 @@ class GhCliClientGraphQlTest {
     fun `parses a healthy repo with a single successful check suite`() {
         val body = """
             {"data":{"r0":{
-                "pullRequests":{"totalCount":3},
+                "pullRequests":{"totalCount":3,"nodes":[
+                    {"number":42,"title":"add feature","createdAt":"2026-06-01T10:00:00Z","url":"https://github.com/akomyagin/shelf/pull/42"}
+                ]},
                 "defaultBranchRef":{"target":{
                     "oid":"abcdef1234567890",
                     "messageHeadline":"do the thing",
@@ -57,6 +60,49 @@ class GhCliClientGraphQlTest {
         assertEquals("abcdef1", s.lastCommit?.sha)
         assertEquals("do the thing", s.lastCommit?.message)
         assertEquals("alkom", s.lastCommit?.author)
+        val pr = s.oldestOpenPr
+        assertEquals(42, pr?.number)
+        assertEquals("add feature", pr?.title)
+        assertEquals("2026-06-01T10:00:00Z", pr?.createdAt)
+        assertEquals("https://github.com/akomyagin/shelf/pull/42", pr?.url)
+    }
+
+    @Test
+    fun `a repo with no open prs has a null oldest pr`() {
+        val body = """
+            {"data":{"r0":{
+                "pullRequests":{"totalCount":0,"nodes":[]},
+                "defaultBranchRef":{"target":{
+                    "oid":"abc","messageHeadline":"m","committedDate":"d","author":{"name":"a"},
+                    "checkSuites":{"nodes":[]}
+                }}
+            }}}
+        """.trimIndent()
+
+        val s = GhCliClient.parseGraphQlResponse(repos("shelf"), body).single()
+
+        assertEquals(0, s.openPrs)
+        assertNull(s.oldestOpenPr)
+    }
+
+    @Test
+    fun `a pullRequests block without a nodes field does not fail parsing and yields no oldest pr`() {
+        // Old-shaped fixture (as used by the other tests in this file, pre-dating
+        // the oldestOpenPr addition) — nullable-safe navigation must not throw.
+        val body = """
+            {"data":{"r0":{
+                "pullRequests":{"totalCount":2},
+                "defaultBranchRef":{"target":{
+                    "oid":"abc","messageHeadline":"m","committedDate":"d","author":{"name":"a"},
+                    "checkSuites":{"nodes":[]}
+                }}
+            }}}
+        """.trimIndent()
+
+        val s = GhCliClient.parseGraphQlResponse(repos("shelf"), body).single()
+
+        assertEquals(2, s.openPrs)
+        assertNull(s.oldestOpenPr)
     }
 
     @Test
@@ -151,6 +197,27 @@ class GhCliClientGraphQlTest {
         assertNull(s.lastCommit)
         assertEquals("no commits", s.ciDetail)
         assertEquals(1, s.openPrs)
+    }
+
+    @Test
+    fun `a repo with no default-branch commit but an open pr still reports the oldest pr`() {
+        val body = """
+            {"data":{"r0":{
+                "pullRequests":{"totalCount":1,"nodes":[
+                    {"number":7,"title":"initial setup","createdAt":"2026-05-01T00:00:00Z","url":"https://github.com/akomyagin/shelf/pull/7"}
+                ]},
+                "defaultBranchRef":null
+            }}}
+        """.trimIndent()
+
+        val s = GhCliClient.parseGraphQlResponse(repos("shelf"), body).single()
+
+        assertNull(s.error)
+        assertNull(s.lastCommit)
+        assertEquals("no commits", s.ciDetail)
+        assertEquals(1, s.openPrs)
+        assertEquals(7, s.oldestOpenPr?.number)
+        assertEquals("initial setup", s.oldestOpenPr?.title)
     }
 
     @Test

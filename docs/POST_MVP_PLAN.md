@@ -78,6 +78,21 @@ loopback, аутентификация (single-user token), HTTPS через rev
 - Дедуп идентичных TODO, скопированных между репозиториями.
 - Игнор-паттерны в конфиге (не только каталоги, но и glob по файлам).
 
-## 8. Метрики портфеля
-Сводка: суммарно открытых PR, репозиториев с красным CI, самый «долгий» открытый
-PR, число TODO по важности. Мини-дашборд «здоровья портфеля» сверху страницы.
+## 8. Метрики портфеля — СДЕЛАНО
+Мини-дашборд «здоровья портфеля» (4 карточки над табами в веб-UI): суммарно
+открытых PR, репозиториев с красным CI, самый «долгий» открытый PR (репо,
+номер, заголовок, дата, ссылка на GitHub), число TODO по важности.
+
+Три метрики из четырёх (сумма `openPrs`, счётчик `ci == FAILURE`, разбивка
+TODO по `priority`) derivable на клиенте из данных, которые `index.html` и
+так уже загружает через `/api/status`+`/api/todos` — отдельный backend-эндпоинт
+`/api/summary` сознательно не заводился (см. `docs/plans/post-mvp-portfolio-metrics.md`).
+Единственная метрика, потребовавшая нового поля с backend, — «самый долгий
+открытый PR»: `RepoStatus` получил nullable `oldestOpenPr: PrInfo?` (дефолт
+`null`, обратно совместим со старыми `status-cache.json`), а GraphQL-запрос
+в `GhCliClient.buildQuery` довозвращает старейший открытый PR каждого
+репозитория (`pullRequests(states: OPEN, first: 1, orderBy: {field:
+CREATED_AT, direction: ASC}) { totalCount nodes { number title createdAt
+url } }`) за тот же round-trip, без доп. постраничной выборки. См.
+`github/Models.kt` (`PrInfo`), `github/GhCliClient.kt` (`buildQuery`/
+`parseRepoNode`/`toPrInfo`), `static/index.html` (`renderSummary`).
