@@ -24,6 +24,13 @@
     .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
     .tag-cached { background:#2e333d; color:#8a94a6; }
     .tag-changed { background:#3a2f12; color:#ffcc00; }
+    #summary { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    #summary .card { background: #1e222b; border: 1px solid #2e333d; border-radius: 8px; padding: 10px 16px; min-width: 160px; }
+    #summary .card .label { color: #8a94a6; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    #summary .card .value { font-size: 20px; font-weight: 700; margin-top: 2px; }
+    #summary .card a { color: #e6e6e6; }
+    #summary .card .sub { font-size: 12px; color: #8a94a6; margin-top: 2px; }
+    #summary .prios { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -36,11 +43,38 @@
     <span id="loading" class="muted"></span>
   </header>
   <main>
+    <div id="summary"></div>
     <div id="view"></div>
   </main>
 
   <script>
     const ci = c => ({SUCCESS:['ok','✔ ok'],FAILURE:['fail','✘ fail'],PENDING:['pending','… running'],UNKNOWN:['unknown','? unknown']}[c] || ['unknown','?']);
+
+    function renderSummary(statusRows, todoRows) {
+      const summary = document.getElementById('summary');
+      const totalOpenPrs = statusRows.reduce((a, r) => a + (r.openPrs || 0), 0);
+      const redCi = statusRows.filter(r => r.ci === 'FAILURE').length;
+
+      const oldest = statusRows
+        .filter(r => r.oldestOpenPr)
+        .map(r => ({ repo: r.fullName, ...r.oldestOpenPr }))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      const oldestHtml = oldest
+        ? `<a href="${/^https:\/\//.test(oldest.url) ? esc(oldest.url) : '#'}" target="_blank" rel="noopener">${esc(oldest.repo)}#${oldest.number}</a>` +
+          `<div class="sub">${esc(oldest.title)}</div><div class="sub">since ${esc((oldest.createdAt||'').slice(0,10))}</div>`
+        : '<span class="muted">no open PRs</span>';
+
+      const byPrio = todoRows.reduce((m, t) => (m[t.priority] = (m[t.priority]||0) + 1, m), {});
+      const prioHtml = Object.keys(byPrio).length
+        ? `<div class="prios">${[5,4,3,2,1].filter(p => byPrio[p]).map(p => `<span class="prio p${p}">P${p}:${byPrio[p]}</span>`).join('')}</div>`
+        : '<span class="muted">no TODOs</span>';
+
+      summary.innerHTML =
+        `<div class="card"><div class="label">Open PRs</div><div class="value">${totalOpenPrs}</div></div>` +
+        `<div class="card"><div class="label">Repos with red CI</div><div class="value ${redCi ? 'fail' : ''}">${redCi}</div></div>` +
+        `<div class="card"><div class="label">Longest-open PR</div><div class="value">${oldestHtml}</div></div>` +
+        `<div class="card"><div class="label">TODOs by priority</div>${prioHtml}</div>`;
+    }
 
     async function show(tab) {
       document.getElementById('tab-status').classList.toggle('active', tab==='status');
@@ -48,8 +82,14 @@
       const l = document.getElementById('loading'); l.textContent = 'loading…';
       const view = document.getElementById('view');
       try {
+        const [statusRows, todoRows] = await Promise.all([
+          (await fetch('/api/status')).json(),
+          (await fetch('/api/todos')).json(),
+        ]);
+        renderSummary(statusRows, todoRows);
+
         if (tab === 'status') {
-          const rows = await (await fetch('/api/status')).json();
+          const rows = statusRows;
           const ok = rows.filter(r => !r.error).length;
           view.innerHTML = `<p class="muted">${rows.length} repos — ${ok} ok, ${rows.length-ok} degraded</p>` +
             `<table><thead><tr><th>Repo</th><th>CI</th><th>Open PRs</th><th>Last commit</th></tr></thead><tbody>` +
@@ -64,7 +104,7 @@
               return `<tr class="${r.stale ? 'stale' : ''}"><td>${esc(r.fullName)}</td><td>${ciCell}</td><td>${r.openPrs}</td><td>${commit}</td></tr>`;
             }).join('') + `</tbody></table>`;
         } else {
-          const rows = await (await fetch('/api/todos')).json();
+          const rows = todoRows;
           view.innerHTML = `<table><thead><tr><th>Prio</th><th>Marker</th><th>Location</th><th>Text</th></tr></thead><tbody>` +
             rows.map(t => `<tr><td><span class="prio p${t.priority}">P${t.priority}</span></td><td>${esc(t.marker)}</td><td class="muted">${esc(t.repo)}/${esc(t.file)}:${t.line}</td><td>${esc(t.text)}</td></tr>`).join('') +
             `</tbody></table>`;

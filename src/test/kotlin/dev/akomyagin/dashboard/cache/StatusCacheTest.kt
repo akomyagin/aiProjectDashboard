@@ -2,12 +2,14 @@ package dev.akomyagin.dashboard.cache
 
 import dev.akomyagin.dashboard.github.CiStatus
 import dev.akomyagin.dashboard.github.CommitInfo
+import dev.akomyagin.dashboard.github.PrInfo
 import dev.akomyagin.dashboard.github.RepoStatus
 import java.nio.file.Files
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StatusCacheTest {
@@ -68,6 +70,53 @@ class StatusCacheTest {
 
         val cache = StatusCache(path)
         assertTrue(cache.load().isEmpty())
+    }
+
+    @Test
+    fun `entries written before oldestOpenPr existed still deserialize, with it null`() {
+        val dir = Files.createTempDirectory("status-cache-test")
+        val path = dir.resolve("status-cache.json")
+        // Shape produced by the code before this field was added — no
+        // "oldestOpenPr" key in the RepoStatus object at all.
+        path.writeText(
+            """
+            {"akomyagin/shelf":{
+                "name":"shelf",
+                "fullName":"akomyagin/shelf",
+                "ci":"SUCCESS",
+                "ciDetail":"CI",
+                "lastCommit":{"sha":"abc1234","message":"do the thing","author":"alkom","date":"2026-07-01T10:00:00Z"},
+                "openPrs":1
+            }}
+            """.trimIndent(),
+        )
+
+        val cache = StatusCache(path)
+        val loaded = cache.load()
+
+        assertEquals(1, loaded.size)
+        assertNull(loaded["akomyagin/shelf"]?.oldestOpenPr)
+    }
+
+    @Test
+    fun `save then load round-trips an entry with oldestOpenPr populated`() {
+        val dir = Files.createTempDirectory("status-cache-test")
+        val path = dir.resolve("status-cache.json")
+        val cache = StatusCache(path)
+
+        val withPr = ok("shelf").copy(
+            oldestOpenPr = PrInfo(
+                number = 42,
+                title = "add feature",
+                createdAt = "2026-06-01T10:00:00Z",
+                url = "https://github.com/akomyagin/shelf/pull/42",
+            ),
+        )
+        cache.save(mapOf("akomyagin/shelf" to withPr))
+
+        val loaded = cache.load()
+        assertEquals(withPr, loaded["akomyagin/shelf"])
+        assertEquals(42, loaded["akomyagin/shelf"]?.oldestOpenPr?.number)
     }
 
     // --- mergeWithCache branches -------------------------------------------------
