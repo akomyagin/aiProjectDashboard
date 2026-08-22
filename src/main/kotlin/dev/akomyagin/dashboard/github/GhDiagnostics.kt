@@ -18,13 +18,17 @@ object GhDiagnostics {
     /**
      * Return a single human hint if the whole portfolio is degraded by what looks
      * like a missing or unauthenticated `gh` CLI, otherwise `null` (partial
-     * failures are left to the normal per-repo error rendering).
+     * failures are left to the normal per-repo error rendering). A repo that
+     * successfully fell back to its cached snapshot (`stale = true`) counts as
+     * reachable for this heuristic — that's a working fallback, not evidence that
+     * `gh` itself is broken.
      */
     fun hint(statuses: List<RepoStatus>): String? {
         if (statuses.isEmpty()) return null
         // Only speak up when the *entire* portfolio is down — a mix of ok/errored
-        // repos is a real per-repo condition, not an environment problem.
-        if (statuses.any { it.error == null }) return null
+        // repos (or repos that degraded gracefully to a cached snapshot) is a
+        // real per-repo condition, not an environment problem.
+        if (statuses.any { it.error == null || it.stale }) return null
 
         val errors = statuses.mapNotNull { it.error }
         val looksLikeGhMissing = errors.any { it.looksLikeMissingGh() }

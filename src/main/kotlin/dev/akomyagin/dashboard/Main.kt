@@ -1,5 +1,6 @@
 package dev.akomyagin.dashboard
 
+import dev.akomyagin.dashboard.cache.StatusCache
 import dev.akomyagin.dashboard.cli.Cli
 import dev.akomyagin.dashboard.config.AppConfig
 import dev.akomyagin.dashboard.config.InitConfigResult
@@ -41,12 +42,18 @@ fun main(args: Array<String>) {
 
     val config = AppConfig.load(configPath)
 
+    // Last-known-good status cache lives next to the config file, so it shares the
+    // config's lifecycle (no new flag, no extra directory). Applies equally to web
+    // and --cli modes.
+    val cachePath = configPath.resolveSibling("status-cache.json")
+
     val service = DashboardService(
         config = config,
         github = GhCliClient(),
         // LlmRanker falls back to the offline HeuristicRanker on its own when
         // DASHBOARD_LLM_API_KEY is unset or the call fails — no branching needed here.
         ranker = LlmRanker(),
+        cache = StatusCache(cachePath),
     )
 
     when (argValue(args, "--cli")) {
