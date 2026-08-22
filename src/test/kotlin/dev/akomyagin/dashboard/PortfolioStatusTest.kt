@@ -1,5 +1,6 @@
 package dev.akomyagin.dashboard
 
+import dev.akomyagin.dashboard.cache.StatusCache
 import dev.akomyagin.dashboard.cli.Cli
 import dev.akomyagin.dashboard.config.AppConfig
 import dev.akomyagin.dashboard.config.RepoConfig
@@ -9,8 +10,10 @@ import dev.akomyagin.dashboard.github.GitHubClient
 import dev.akomyagin.dashboard.github.RepoStatus
 import dev.akomyagin.dashboard.rank.HeuristicRanker
 import kotlinx.coroutines.test.runTest
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -96,6 +99,21 @@ class PortfolioStatusTest {
     }
 
     @Test
+    fun `cli render shows the live error inline for a stale row and a changed marker`() {
+        val liveError = "gh failed: network down and also this message is a lot longer than sixty characters for sure"
+        val statuses = listOf(
+            FakeGitHubClient.ok("shelf").copy(stale = true, error = liveError),
+            FakeGitHubClient.ok("gitl", ci = CiStatus.FAILURE).copy(ciChanged = true),
+        )
+
+        val out = Cli.renderStatus(statuses)
+
+        // The live error is truncated to 60 chars, same as the commit-message truncation elsewhere.
+        assertTrue(out.contains("[cached: ${liveError.take(60)}]"), out)
+        assertTrue(out.contains("[changed]"), out)
+    }
+
+    @Test
     fun `empty portfolio renders header without crashing`() {
         val out = Cli.renderStatus(emptyList())
         assertTrue(out.contains("0 repos (0 ok, 0 degraded)"), out)
@@ -110,6 +128,27 @@ class PortfolioStatusTest {
 
     private fun scannerFor(cfg: AppConfig) =
         dev.akomyagin.dashboard.scan.TodoScanner(cfg)
+
+    @Test
+    fun `a real StatusCache wires through the constructor and persists a snapshot`() = runTest {
+        val cfg = configFor("shelf")
+        val cacheFile = Files.createTempDirectory("dashboard-cache").resolve("status-cache.json")
+        val cache = StatusCache(cacheFile)
+        val service = DashboardService(cfg, FakeGitHubClient(), HeuristicRanker(), scannerFor(cfg), cache)
+
+        // First poll: live success, nothing cached yet — clean pass-through, cache populated.
+        val first = service.portfolioStatus().single()
+        assertNull(first.error)
+        assertFalse(first.stale)
+        assertFalse(first.ciChanged)
+        assertTrue(Files.exists(cacheFile))
+        assertEquals(1, cache.load().size)
+
+        // Second poll on the same happy path: still no diff, so no ciChanged flag.
+        val second = service.portfolioStatus().single()
+        assertFalse(second.ciChanged)
+        assertFalse(second.stale)
+    }
 
     @Test
     fun `commit info survives the fake round-trip`() = runTest {

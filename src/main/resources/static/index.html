@@ -20,6 +20,10 @@
     .p5,.p4 { color:#ff5c5c;} .p3{color:#ffcc00;} .p2,.p1{color:#8a94a6;}
     .muted { color: #8a94a6; }
     code { background:#1e222b; padding: 1px 5px; border-radius: 4px; }
+    tr.stale td { opacity: 0.6; }
+    .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+    .tag-cached { background:#2e333d; color:#8a94a6; }
+    .tag-changed { background:#3a2f12; color:#ffcc00; }
   </style>
 </head>
 <body>
@@ -51,11 +55,13 @@
             `<table><thead><tr><th>Repo</th><th>CI</th><th>Open PRs</th><th>Last commit</th></tr></thead><tbody>` +
             rows.map(r => {
               const [cls,label] = ci(r.ci);
-              const ciCell = r.ciDetail ? `<span class="${cls}" title="${esc(r.ciDetail)}">${label}</span>` : `<span class="${cls}">${label}</span>`;
+              const tags = (r.stale ? `<span class="tag tag-cached" title="${esc(r.error||'')}">cached</span>` : '') +
+                           (r.ciChanged ? '<span class="tag tag-changed">changed</span>' : '');
+              const ciCell = (r.ciDetail ? `<span class="${cls}" title="${esc(r.ciDetail)}">${label}</span>` : `<span class="${cls}">${label}</span>`) + tags;
               const commit = r.lastCommit
                 ? `<code>${esc(r.lastCommit.sha)}</code> ${esc(r.lastCommit.message)} <span class="muted">${esc((r.lastCommit.date||'').slice(0,10))}</span>`
                 : (r.error ? `<span class="fail">${esc(r.error)}</span>` : '<span class="muted">-</span>');
-              return `<tr><td>${esc(r.fullName)}</td><td>${ciCell}</td><td>${r.openPrs}</td><td>${commit}</td></tr>`;
+              return `<tr class="${r.stale ? 'stale' : ''}"><td>${esc(r.fullName)}</td><td>${ciCell}</td><td>${r.openPrs}</td><td>${commit}</td></tr>`;
             }).join('') + `</tbody></table>`;
         } else {
           const rows = await (await fetch('/api/todos')).json();

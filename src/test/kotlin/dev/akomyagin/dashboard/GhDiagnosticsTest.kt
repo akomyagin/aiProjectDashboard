@@ -68,4 +68,16 @@ class GhDiagnosticsTest {
         )
         assertNull(GhDiagnostics.hint(statuses))
     }
+
+    @Test
+    fun `no hint when every repo gracefully degraded to a cached snapshot`() {
+        // Regression: a transient blip where every live poll fails but every repo
+        // has a good cache entry must not be misdiagnosed as "gh is broken" — the
+        // fallback worked, this isn't an environment problem.
+        val statuses = listOf(
+            errored("a", "gh failed: HTTP 401 Unauthorized").copy(stale = true),
+            errored("b", "authentication required, run gh auth login").copy(stale = true),
+        )
+        assertNull(GhDiagnostics.hint(statuses))
+    }
 }

@@ -27,4 +27,8 @@ data class RepoStatus(
     val lastCommit: CommitInfo? = null,
     val openPrs: Int = 0,
     val error: String? = null,
+    /** True when this is the last successful cached snapshot, not a live poll. */
+    val stale: Boolean = false,
+    /** True when the live CI conclusion differs from the previously cached one. */
+    val ciChanged: Boolean = false,
 )

@@ -41,12 +41,22 @@ object Cli {
                 CiStatus.UNKNOWN -> "?"
             }
             val commit = when {
+                // A stale row carries a live error but still shows its cached snapshot.
+                s.stale && s.lastCommit != null -> "${s.lastCommit.sha} ${s.lastCommit.message.take(60)}"
                 s.error != null -> "error: ${s.error}"
                 s.lastCommit != null -> "${s.lastCommit.sha} ${s.lastCommit.message.take(60)}"
                 else -> "-"
             }
+            val marks = buildString {
+                if (s.stale) {
+                    append(" [cached")
+                    s.error?.let { append(": ${it.take(60)}") }
+                    append("]")
+                }
+                if (s.ciChanged) append(" [changed]")
+            }
             sb.append(
-                "  ${badge.padEnd(6)} ${s.fullName.padEnd(nameWidth)}  ${s.openPrs.toString().padStart(3)}  $commit\n",
+                "  ${badge.padEnd(6)} ${s.fullName.padEnd(nameWidth)}  ${s.openPrs.toString().padStart(3)}  $commit$marks\n",
             )
         }
         return sb.toString()
