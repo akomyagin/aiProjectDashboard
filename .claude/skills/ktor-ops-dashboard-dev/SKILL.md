@@ -38,29 +38,47 @@ description: Конвенции и технические решения раз�
 Решение зафиксировано (`TECHNICAL_PLAN.md §1–2`). Причина — **не хранить токен**:
 переиспользуем существующую `gh auth`-сессию пользователя.
 
-- Все вызовы `gh` спрятаны за портом `GitHubClient` (`fetchStatus(repo)`).
-  Реализация — `GhCliClient`. Если позже понадобится прямой REST/GraphQL через
-  Ktor Client — добавляется новый адаптер, `DashboardService` и маршруты не трогаются.
+- Все вызовы `gh` спрятаны за портом `GitHubClient` (`fetchStatus(repo)` — одиночный
+  репозиторий, `fetchStatuses(repos)` — батч с default-реализацией через fan-out).
+  Реализация — `GhCliClient`. Если позже понадобится другой адаптер (прямой REST
+  через Ktor Client, другой CI-провайдер) — `DashboardService` и маршруты не трогаются.
 - Запуск `gh` — через `ProcessBuilder` в `Dispatchers.IO`, с **таймаутом**
   (`proc.waitFor(timeout, SECONDS)`, иначе `destroyForcibly()`). Читать stdout и
   stderr раздельно, проверять `exitValue()`, оборачивать ошибку текстом stderr.
 - Парсить JSON-вывод `gh` (`gh ... --json ...`, `gh api ...`) через
-  kotlinx.serialization (`Json { ignoreUnknownKeys = true }`), работать с
-  `JsonElement`/`jsonObject`/`jsonArray` там, где схема мелкая.
+  kotlinx.serialization (`Json { ignoreUnknownKeys = true }`). Навигация по мелкой
+  схеме — **только** через `as? JsonObject` / `as? JsonArray`: в ответах GraphQL
+  JSON `null` приходит как отдельный `JsonElement`, и свойства `.jsonObject` /
+  `.jsonArray` на нём **бросают** (напоролись на `defaultBranchRef: null`).
 - **Graceful degradation:** любую ошибку по репозиторию складывать в
   `RepoStatus.error`, а не бросать наверх — одна упавшая репа не должна ронять
-  весь дашборд. `fetchStatus` ловит `Exception` и возвращает degraded `RepoStatus`.
+  весь дашборд. Ловит `fetchStatusesBatch` (`GhCliClient.kt:61`); `fetchStatus`
+  теперь просто делегирует в `fetchStatuses(listOf(repo))`.
 - Нормализовать вокабуляр GitHub в свои enum'ы (`CiStatus`) в одном месте
   (`GhCliClient.mapCi`) — это тестируется юнит-тестом без сети.
 
-### GraphQL (post-MVP)
-Когда портфель разрастётся — один GraphQL-запрос вместо N REST-вызовов на репу
-(`gh api graphql -f query=...`). Спрятать за тем же портом `GitHubClient`.
+### GraphQL — СДЕЛАНО (post-MVP §2)
+`GhCliClient.fetchStatuses` шлёт один `gh api graphql -f query=...` на чанк
+репозиториев (алиасы `r0`, `r1`, ...); спрятано за портом `GitHubClient`.
+Грабли, пойманные живьём (детали — `docs/POST_MVP_PLAN.md` §2):
+
+- CI берётся из `checkSuites` HEAD-коммита дефолтной ветки, а не из `gh run list`.
+- Плейсхолдер ровно в форме `status=QUEUED, conclusion=null, workflowRun=null`
+  отбрасывается. Фильтровать **только** по `workflowRun == null` нельзя — это поле
+  null-по-схеме и у настоящих non-Actions check suite'ов (сторонний CI через Checks API).
+- Сбой батч-вызова не деградирует весь чанк: каждый репозиторий ретраится отдельным
+  одиночным запросом, чтобы сохранить per-repo изоляцию.
+- Строки ошибок не должны начинаться с `gh api graphql:` — иначе
+  `GhDiagnostics.looksLikeMissingGh()` ложно срабатывает на «gh» + «not found».
 
 ## 3. Конкурентность
 
-- Опрос репозиториев Фазы 1 — **конкурентно**: `coroutineScope { repos.map { async { ... } }.awaitAll() }`.
-  Уже реализовано в `DashboardService.portfolioStatus()`.
+- Опрос репозиториев Фазы 1 — **конкурентно**, но решает это порт `GitHubClient`,
+  а не ядро: `fetchStatuses(repos)` имеет default-реализацию
+  `coroutineScope { repos.map { async { fetchStatus(it) } }.awaitAll() }`, а
+  `GhCliClient` переопределяет её батчем (чанки идут конкурентно).
+  `DashboardService.portfolioStatus()` только делегирует — **не возвращать fan-out
+  туда обратно**.
 - Блокирующий I/O (`ProcessBuilder`, чтение файлов) выполнять на `Dispatchers.IO`
   (`withContext(Dispatchers.IO) { ... }`), не блокировать event-loop Ktor.
 
@@ -91,12 +109,22 @@ description: Конвенции и технические решения раз�
 ## 5. Ранжирование (порты и offline-режим)
 
 - `TodoRanker` — порт (`suspend fun rank(items): List<TodoItem>`).
-- `HeuristicRanker` — offline-реализация по умолчанию (скоринг по маркеру +
-  urgency-словам), **без сети и ключа**. Это портфельная конвенция offline-mode:
-  приложение полностью работоспособно без LLM-ключа.
-- `LlmRanker` (post-MVP) — через Ktor Client к OpenAI-совместимому API. Ключ —
-  **только из переменной окружения**, никогда из конфига/репозитория. Нет ключа →
-  тихий откат на `HeuristicRanker`.
+- `HeuristicRanker` — offline-реализация (скоринг по маркеру + urgency-словам),
+  **без сети и ключа**. Это портфельная конвенция offline-mode: приложение полностью
+  работоспособно без LLM-ключа. Внимание: `Main.kt` конструирует **не** его, а
+  `LlmRanker()` — `HeuristicRanker` работает как fallback внутри него.
+- `LlmRanker` — СДЕЛАНО (Этап 4), через Ktor Client к OpenAI-совместимому
+  `/chat/completions`. Ключ **только из переменной окружения** `DASHBOARD_LLM_API_KEY`
+  (плюс опциональные `DASHBOARD_LLM_BASE_URL`, `DASHBOARD_LLM_MODEL`), никогда из
+  конфига/репозитория. Нет ключа, сетевая ошибка или невалидный JSON → тихий откат на
+  `HeuristicRanker`. Инварианты, добытые ревью — не ломать:
+  - **`HttpTimeout` обязателен** на клиенте. `runCatching` ловит исключения, но не
+    зависание: без таймаута зависший эндпоинт вешает `/api/todos` и `--cli todos` навсегда.
+  - Сбой **логировать** в stderr перед откатом, иначе «LLM молча не работает»
+    неотличимо от «ключ не задан» — правило проекта: делать причину видимой
+    (ср. `GhDiagnostics`).
+  - `Main.kt` после `--cli` режимов зовёт `exitProcess(0)`: незакрытый `HttpClient`
+    держит потоки движка и мешает процессу выйти.
 
 ## 6. Конфиг
 
@@ -105,9 +133,11 @@ description: Конвенции и технические решения раз�
   **никогда не хардкодить** в логике — только как default-seed в конфиге.
 - `Json { ignoreUnknownKeys = true }` — чтобы старый конфиг не ломался при
   добавлении полей.
-- `encodeToString` требует явного сериализатора: `json.encodeToString(serializer(), value)`
-  (без него компилятор Kotlin 2.0 не выведет тип — это реальная грабля, уже
-  напоровшаяся при bootstrap).
+- `encodeToString` требует явного сериализатора для `@Serializable`-типов:
+  `json.encodeToString(serializer(), value)` (без него компилятор Kotlin 2.0 не
+  выведет тип — реальная грабля, уже напоровшаяся при bootstrap; см. `AppConfig.serialize`).
+  Для примитивов (`String` и т.п.) хватает reified-формы `json.encodeToString(value)`
+  с `import kotlinx.serialization.encodeToString` — так сделано в `GhCliClient.quote()`.
 
 ## 7. Тестирование
 
@@ -115,7 +145,9 @@ description: Конвенции и технические решения раз�
 
 - **Юнит:** `TodoScanner` против temp-каталога (маркеры, исключения, не-маркеры);
   `HeuristicRanker` (порядок приоритетов); `AppConfig` JSON round-trip;
-  `GhCliClient.mapCi`.
+  `GhCliClient.mapCi`/`buildQuery`/`parseGraphQlResponse` (последние два — public
+  специально ради тестов без реального `gh`); `LlmRanker` — фейковый `HttpClient`
+  (`ktor-client-mock`), нет ключа / успешный разбор / сетевая ошибка / невалидный JSON.
 - **Маршруты (Этап 1+):** `ktor-server-test-host` (`testApplication { ... }`) с
   **фейковым** `GitHubClient`, гоняющим реальный стек Ktor — проверять
   `/api/status`, `/api/todos`, degraded-путь и JSON-контракт. Именно фейк, а не
