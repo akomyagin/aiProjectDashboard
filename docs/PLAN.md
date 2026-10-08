@@ -2,7 +2,8 @@
 
 > Живой документ верхнего уровня. Техническая проработка и разбивка по этапам —
 > в [`TECHNICAL_PLAN.md`](./TECHNICAL_PLAN.md); всё за пределами MVP —
-> в [`POST_MVP_PLAN.md`](./POST_MVP_PLAN.md).
+> в [`POST_MVP_PLAN.md`](./POST_MVP_PLAN.md); рыночное исследование конкурентов
+> и разовый аудит доков/кода — в [`MARKET_RESEARCH.md`](./MARKET_RESEARCH.md).
 
 ---
 

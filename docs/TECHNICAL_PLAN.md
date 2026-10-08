@@ -73,7 +73,7 @@ src/main/kotlin/dev/akomyagin/dashboard/
 ├── rank/
 │   └── TodoRanker.kt       # ПОРТ TodoRanker + АДАПТЕР HeuristicRanker (offline)
 ├── http/
-│   └── Server.kt           # Ktor: плагины + маршруты (/api/status, /api/todos, статика)
+│   └── Server.kt           # Ktor: плагины + маршруты (/api/status, /api/todos, /api/health, статика)
 └── cli/
     └── Cli.kt              # рендер тех же данных в терминал
 src/main/resources/
